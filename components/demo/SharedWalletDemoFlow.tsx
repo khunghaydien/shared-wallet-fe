@@ -33,6 +33,10 @@ const MOCK_PARTNERS: Partner[] = [
   { id: "p4", name: "Quỹ Gamma", role: "Đối tác", initials: "QG" },
 ];
 
+/** Trọng tài mặc định — Luật sư Minh An */
+const ARBITRATOR_ID = "p3";
+const DEFAULT_SELECTED_IDS = [ARBITRATOR_ID];
+
 const NFT_TERMS = [
   "Cam kết đóng góp theo tỷ lệ chuyên môn đã thỏa thuận.",
   "Ưu tiên thanh toán nợ vận hành trước khi chia lợi nhuận.",
@@ -158,7 +162,9 @@ function TermsNftCard({
 export function SharedWalletDemoFlow() {
   const { message } = App.useApp();
   const [step, setStep] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([
+    ...DEFAULT_SELECTED_IDS,
+  ]);
   const [wallets, setWallets] = useState<Record<string, string>>({});
   const [validated, setValidated] = useState<Record<string, boolean>>({});
   const [amounts, setAmounts] = useState<Record<string, number | null>>({});
@@ -175,7 +181,7 @@ export function SharedWalletDemoFlow() {
     [selectedIds]
   );
 
-  const vaultPasswordDemo = useMemo(
+  const vaultPasswordFull = useMemo(
     () => buildVaultPassword(partySecrets),
     [partySecrets]
   );
@@ -192,14 +198,14 @@ export function SharedWalletDemoFlow() {
 
   const resetFlow = useCallback(() => {
     setStep(1);
-    setSelectedIds([]);
+    setSelectedIds([...DEFAULT_SELECTED_IDS]);
     setWallets({});
     setValidated({});
     setAmounts({});
     setWalletCreated(false);
     setSharedAddress(null);
     setPartySecrets([]);
-    message.info("Đã reset luồng demo.");
+    message.info("Đã quay lại bước 1. Bạn có thể thực hiện lại các thao tác.");
   }, [message]);
 
   const goStep2 = () => {
@@ -207,6 +213,10 @@ export function SharedWalletDemoFlow() {
       message.error("Vui lòng chọn ít nhất một đối tác hoặc trọng tài.");
       return;
     }
+    /* Bước 2 luôn có trọng tài (Luật sư Minh An) để thực hiện xác thực */
+    setSelectedIds((prev) =>
+      prev.includes(ARBITRATOR_ID) ? prev : [...prev, ARBITRATOR_ID]
+    );
     setStep(2);
     setValidated({});
   };
@@ -221,7 +231,9 @@ export function SharedWalletDemoFlow() {
     }
     setValidated(next);
     if (ok) {
-      message.success("Địa chỉ ví hợp lệ.");
+      message.success(
+        "Trọng tài đã xác thực: địa chỉ hợp lệ và điều kiện góp được ghi nhận."
+      );
       setStep(3);
     } else {
       message.error("Một hoặc nhiều địa chỉ chưa hợp lệ. Thử ví dụ: 0x + 40 ký tự hex.");
@@ -250,7 +262,9 @@ export function SharedWalletDemoFlow() {
     setPartySecrets(rows);
     setSharedAddress(randomEthAddress());
     setWalletCreated(true);
-    message.success("Ví chung demo đã được gửi tới các bên.");
+    message.success(
+      "Đã tạo ví chung. Thông tin và mã gửi riêng đã được chuẩn bị cho từng bên."
+    );
   };
 
   const finishToStep5 = () => {
@@ -259,7 +273,7 @@ export function SharedWalletDemoFlow() {
       return;
     }
     setStep(5);
-    message.success("Góp tiền thành công (demo).");
+    message.success("Đã hoàn tất. Kiểm tra màn hình xác nhận bên dưới.");
   };
 
   const stepDone = (s: number) => step > s;
@@ -277,14 +291,15 @@ export function SharedWalletDemoFlow() {
       <div className="mx-auto max-w-3xl px-4 py-10 md:py-14">
         <header className="mb-10 text-center">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">
-            Demo
+            Hướng dẫn
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
             Góp tiền ví chung
           </h1>
           <p className="mt-3 text-foreground/65 max-w-xl mx-auto text-[15px] leading-relaxed">
-            Luồng mô phỏng: chọn bên tham gia, xác thực ví, xác nhận vốn, tạo ví
-            công ty và nhận NFT cam kết (dữ liệu mock, chỉ giao diện).
+            Thực hiện lần lượt các bước: chọn bên tham gia → xác thực địa chỉ ví
+            → nhập mức góp → tạo ví công ty và nhận NFT cam kết. Bạn có thể làm
+            lại từ đầu bất cứ lúc nào.
           </p>
         </header>
 
@@ -314,7 +329,10 @@ export function SharedWalletDemoFlow() {
                 Chọn đối tác / trọng tài
               </h2>
               <p className="text-sm text-foreground/65">
-                Chọn một hoặc nhiều bên, sau đó tạo ví chung.
+                <strong>Luật sư Minh An</strong> (trọng tài) được chọn sẵn; bạn
+                có thể thêm đối tác khác. Ở bước xác thực địa chỉ ví, chỉ trọng
+                tài mới nhấn &quot;Xác thực&quot; khi đã xác nhận mọi bên đủ điều
+                kiện.
               </p>
               <ul className="grid gap-3 sm:grid-cols-2">
                 {MOCK_PARTNERS.map((p) => {
@@ -381,20 +399,47 @@ export function SharedWalletDemoFlow() {
                 <QrcodeOutlined className="text-primary" />
                 Địa chỉ ví từng bên
               </h2>
+              <div className="rounded-2xl border border-primary/30 bg-[var(--sidebar-item-active-bg)] p-4 md:p-5 space-y-2 text-sm text-foreground/85 leading-relaxed">
+                <p className="font-semibold text-foreground">
+                  Quyền xác thực (bước này)
+                </p>
+                <p>
+                  Chỉ <strong>trọng tài</strong> (ví dụ{" "}
+                  <strong>Luật sư Minh An</strong>) mới được nhấn nút{" "}
+                  <strong>Xác thực</strong> sau khi đã đối chiếu: mọi bên đã khai
+                  báo địa chỉ ví và bạn xác nhận{" "}
+                  <strong>tất cả mọi người đã vào đủ tiền</strong> theo thỏa
+                  thuận. Các bên khác chỉ nhập / dán địa chỉ, không dùng nút này
+                  thay trọng tài.
+                </p>
+              </div>
               <p className="text-sm text-foreground/65">
-                Dán địa chỉ hoặc nội dung quét được. Nhấn &quot;Xác thực&quot; khi đã
-                nhập đủ.
+                Mỗi bên dán địa chỉ hoặc nội dung quét được. Trọng tài kiểm tra
+                đủ điều kiện rồi mới nhấn &quot;Xác thực&quot; bên dưới.
               </p>
               <div className="space-y-4">
                 {selectedPartners.map((p) => {
                   const v = validated[p.id];
                   const hasInput = (wallets[p.id] ?? "").trim().length > 0;
+                  const isArbitrator = p.id === ARBITRATOR_ID;
                   return (
                     <div
                       key={p.id}
-                      className="rounded-2xl border border-border bg-background p-4"
+                      className={[
+                        "rounded-2xl border bg-background p-4",
+                        isArbitrator
+                          ? "border-primary border-2 shadow-[0_0_0_1px_var(--sidebar-item-active-bg)]"
+                          : "border-border",
+                      ].join(" ")}
                     >
-                      <p className="text-sm font-semibold mb-2">{p.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <p className="text-sm font-semibold flex flex-wrap items-center">{p.name}</p>
+                        {isArbitrator ? (
+                          <span className="rounded-full bg-[var(--sidebar-item-active-bg)] px-2.5 py-0.5 text-xs font-semibold text-primary">
+                            Trọng tài — chỉ bên này bấm &quot;Xác thực&quot;
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Input
                           size="large"
@@ -425,18 +470,24 @@ export function SharedWalletDemoFlow() {
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button size="large" className="!rounded-xl" onClick={() => setStep(1)}>
-                  Quay lại
-                </Button>
-                <Button
-                  type="primary"
-                  size="large"
-                  className="!rounded-xl !font-semibold"
-                  onClick={validateAllWallets}
-                >
-                  Xác thực
-                </Button>
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-3 items-center">
+                  <Button size="large" className="!rounded-xl" onClick={() => setStep(1)}>
+                    Quay lại
+                  </Button>
+                  <Button
+                    type="primary"
+                    size="large"
+                    className="!rounded-xl !font-semibold"
+                    onClick={validateAllWallets}
+                  >
+                    Xác thực
+                  </Button>
+                </div>
+                <p className="text-xs text-foreground/55 pl-0.5">
+                  Thao tác &quot;Xác thực&quot; do trọng tài thực hiện sau khi đã kiểm
+                  tra địa chỉ và xác nhận toàn bộ bên đã vào đủ tiền.
+                </p>
               </div>
             </section>
           )}
@@ -446,7 +497,7 @@ export function SharedWalletDemoFlow() {
             <section className="space-y-6">
               <h2 className="text-xl font-bold">Xác nhận số tiền góp</h2>
               <p className="text-sm text-foreground/65">
-                Nhập tổng mức đầu tư (VND, demo) cho từng bên.
+                Nhập tổng mức đầu tư (VND) cho từng bên theo thỏa thuận.
               </p>
               <div className="space-y-3">
                 {selectedPartners.map((p) => (
@@ -511,7 +562,7 @@ export function SharedWalletDemoFlow() {
                         khẩu dài{" "}
                         <strong>{selectedPartners.length * 6} ký tự</strong>
                         {selectedPartners.length === 2
-                          ? " (ví dụ 2 công ty → 12 ký tự như bạn mô tả)."
+                          ? " (ví dụ: 2 bên → 12 ký tự)."
                           : "."}{" "}
                         Sai thứ tự hoặc thiếu một đoạn thì không mở được ví.
                       </li>
@@ -524,8 +575,8 @@ export function SharedWalletDemoFlow() {
                 </div>
               </div>
               <p className="text-sm text-foreground/65">
-                Nhấn &quot;Tạo ví&quot; để hệ thống sinh đoạn 6 ký tự cho từng bên và hiển
-                thị ví chung demo.
+                Nhấn <strong>Tạo ví</strong> để hệ thống sinh đoạn 6 ký tự cho từng
+                bên và hiển thị địa chỉ ví chung cùng cách ghép mật khẩu đầy đủ.
               </p>
               <div className="overflow-x-auto rounded-2xl border border-border bg-background">
                 <table className="w-full text-sm">
@@ -571,7 +622,7 @@ export function SharedWalletDemoFlow() {
                 <div className="space-y-4">
                   <div className="rounded-2xl border-2 border-primary/30 bg-[var(--sidebar-item-active-bg)] p-5">
                     <p className="text-xs font-semibold uppercase text-primary">
-                      Ví chung (demo)
+                      Địa chỉ ví chung
                     </p>
                     <p className="mt-2 break-all font-mono text-sm md:text-base">
                       {sharedAddress}
@@ -606,10 +657,12 @@ export function SharedWalletDemoFlow() {
                         </span>
                       </div>
                       <p className="break-all rounded-xl border border-dashed border-border bg-[var(--pricing-select-bg)] px-4 py-3 font-mono text-sm md:text-base tracking-wide">
-                        {vaultPasswordDemo}
+                        {vaultPasswordFull}
                       </p>
-                      <p className="text-xs text-foreground/55">
-                        Demo hiển thị full chuỗi để bạn minh họa; sản phẩm thật chỉ lưu từng đoạn trên kênh riêng của từng bên.
+                      <p className="text-xs text-foreground/55 leading-relaxed">
+                        <strong>Lưu ý:</strong> Chuỗi đầy đủ ở đây giúp bạn đối
+                        chiếu thứ tự ghép; trong vận hành, mỗi bên thường chỉ nhận
+                        đoạn 6 ký tự của mình qua kênh gửi riêng.
                       </p>
                     </div>
                   )}
@@ -639,7 +692,8 @@ export function SharedWalletDemoFlow() {
                 <CheckCircleFilled className="text-4xl text-primary mb-3" />
                 <h2 className="text-2xl font-bold">Góp tiền thành công</h2>
                 <p className="mt-2 text-sm text-foreground/70">
-                  Đây là màn hình xác nhận cuối luồng demo.
+                  Kiểm tra lại thông tin. Nhấn vào NFT bên dưới để xem điều khoản
+                  hoặc tương tác khi cần.
                 </p>
               </div>
 
@@ -660,12 +714,12 @@ export function SharedWalletDemoFlow() {
                       <div>
                         <p className="font-bold">
                           Hợp đồng #
-                          {vaultPasswordDemo
-                            ? `${vaultPasswordDemo.slice(0, 6)}…`
+                          {vaultPasswordFull
+                            ? `${vaultPasswordFull.slice(0, 6)}…`
                             : "------"}
                         </p>
                         <p className="text-xs text-foreground/60 mt-1">
-                          Nhấn để xem điều khoản
+                          Nhấn để mở chi tiết điều khoản
                         </p>
                       </div>
                     </div>
@@ -679,7 +733,7 @@ export function SharedWalletDemoFlow() {
                 className="!rounded-xl"
                 onClick={resetFlow}
               >
-                Demo lại từ đầu
+                Làm lại từ bước 1
               </Button>
             </section>
           )}
@@ -687,7 +741,7 @@ export function SharedWalletDemoFlow() {
       </div>
 
       <Modal
-        title="Điều khoản NFT (demo)"
+        title="Nội dung điều khoản trong NFT"
         open={termsOpen}
         onCancel={() => setTermsOpen(false)}
         footer={[
@@ -711,8 +765,10 @@ export function SharedWalletDemoFlow() {
         width={520}
       >
         <TermsNftCard
-          title="Bản ghi cam kết đã ký (mô phỏng)"
-          onOpen={() => message.success("Tương tác demo: đã mở chi tiết.")}
+          title="Bản ghi cam kết đã ký"
+          onOpen={() =>
+            message.success("Đã mở nội dung chi tiết. Tiếp tục thao tác trên màn hình tương ứng.")
+          }
           compact
         />
       </Modal>
