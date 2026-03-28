@@ -10,6 +10,7 @@ import {
   Modal,
 } from "antd";
 import {
+  BranchesOutlined,
   CheckCircleFilled,
   FileProtectOutlined,
   KeyOutlined,
@@ -33,9 +34,11 @@ const MOCK_PARTNERS: Partner[] = [
   { id: "p4", name: "Quỹ Gamma", role: "Đối tác", initials: "QG" },
 ];
 
-/** Trọng tài mặc định — Luật sư Minh An */
+/** Trọng tài mặc định — Luật sư Minh An (chỉ khi cơ chế có trọng tài) */
 const ARBITRATOR_ID = "p3";
 const DEFAULT_SELECTED_IDS = [ARBITRATOR_ID];
+
+type Mechanism = "with_arbitrator" | "without_arbitrator";
 
 const NFT_TERMS = [
   "Cam kết đóng góp theo tỷ lệ chuyên môn đã thỏa thuận.",
@@ -162,9 +165,8 @@ function TermsNftCard({
 export function SharedWalletDemoFlow() {
   const { message } = App.useApp();
   const [step, setStep] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<string[]>([
-    ...DEFAULT_SELECTED_IDS,
-  ]);
+  const [mechanism, setMechanism] = useState<Mechanism | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [wallets, setWallets] = useState<Record<string, string>>({});
   const [validated, setValidated] = useState<Record<string, boolean>>({});
   const [amounts, setAmounts] = useState<Record<string, number | null>>({});
@@ -180,6 +182,15 @@ export function SharedWalletDemoFlow() {
     () => MOCK_PARTNERS.filter((p) => selectedIds.includes(p.id)),
     [selectedIds]
   );
+
+  const partnersToShow = useMemo(() => {
+    if (mechanism === "without_arbitrator") {
+      return MOCK_PARTNERS.filter((p) => p.id !== ARBITRATOR_ID);
+    }
+    return MOCK_PARTNERS;
+  }, [mechanism]);
+
+  const hasArbitratorFlow = mechanism === "with_arbitrator";
 
   const vaultPasswordFull = useMemo(
     () => buildVaultPassword(partySecrets),
@@ -198,26 +209,55 @@ export function SharedWalletDemoFlow() {
 
   const resetFlow = useCallback(() => {
     setStep(1);
-    setSelectedIds([...DEFAULT_SELECTED_IDS]);
+    setMechanism(null);
+    setSelectedIds([]);
     setWallets({});
     setValidated({});
     setAmounts({});
     setWalletCreated(false);
     setSharedAddress(null);
     setPartySecrets([]);
-    message.info("Đã quay lại bước 1. Bạn có thể thực hiện lại các thao tác.");
+    message.info("Đã quay lại bước 1. Bạn có thể chọn lại cơ chế và thao tác.");
   }, [message]);
 
-  const goStep2 = () => {
-    if (selectedIds.length === 0) {
-      message.error("Vui lòng chọn ít nhất một đối tác hoặc trọng tài.");
+  const continueFromMechanism = () => {
+    if (!mechanism) {
+      message.error(
+        "Vui lòng chọn cơ chế: có trọng tài hoặc không có trọng tài."
+      );
       return;
     }
-    /* Bước 2 luôn có trọng tài (Luật sư Minh An) để thực hiện xác thực */
-    setSelectedIds((prev) =>
-      prev.includes(ARBITRATOR_ID) ? prev : [...prev, ARBITRATOR_ID]
-    );
+    setWallets({});
+    setValidated({});
+    setAmounts({});
+    setWalletCreated(false);
+    setSharedAddress(null);
+    setPartySecrets([]);
+    if (mechanism === "with_arbitrator") {
+      setSelectedIds([...DEFAULT_SELECTED_IDS]);
+    } else {
+      setSelectedIds([]);
+    }
     setStep(2);
+  };
+
+  const goFromPartnersToWallets = () => {
+    if (selectedIds.length === 0) {
+      message.error(
+        hasArbitratorFlow
+          ? "Vui lòng chọn ít nhất một đối tác hoặc trọng tài."
+          : "Vui lòng chọn ít nhất một đối tác."
+      );
+      return;
+    }
+    if (hasArbitratorFlow) {
+      setSelectedIds((prev) =>
+        prev.includes(ARBITRATOR_ID) ? prev : [...prev, ARBITRATOR_ID]
+      );
+    } else {
+      setSelectedIds((prev) => prev.filter((id) => id !== ARBITRATOR_ID));
+    }
+    setStep(3);
     setValidated({});
   };
 
@@ -232,9 +272,11 @@ export function SharedWalletDemoFlow() {
     setValidated(next);
     if (ok) {
       message.success(
-        "Trọng tài đã xác thực: địa chỉ hợp lệ và điều kiện góp được ghi nhận."
+        hasArbitratorFlow
+          ? "Trọng tài đã xác thực: địa chỉ hợp lệ và điều kiện góp được ghi nhận."
+          : "Đã xác thực: địa chỉ ví hợp lệ, có thể sang bước nhập mức góp."
       );
-      setStep(3);
+      setStep(4);
     } else {
       message.error("Một hoặc nhiều địa chỉ chưa hợp lệ. Thử ví dụ: 0x + 40 ký tự hex.");
     }
@@ -249,7 +291,7 @@ export function SharedWalletDemoFlow() {
       }
     }
     message.success("Đã xác nhận mức đóng góp.");
-    setStep(4);
+    setStep(5);
   };
 
   const createWallet = () => {
@@ -267,12 +309,12 @@ export function SharedWalletDemoFlow() {
     );
   };
 
-  const finishToStep5 = () => {
+  const finishToFinalStep = () => {
     if (!walletCreated) {
       message.warning('Nhấn "Tạo ví" trước khi tiếp tục.');
       return;
     }
-    setStep(5);
+    setStep(6);
     message.success("Đã hoàn tất. Kiểm tra màn hình xác nhận bên dưới.");
   };
 
@@ -297,18 +339,18 @@ export function SharedWalletDemoFlow() {
             Góp tiền ví chung
           </h1>
           <p className="mt-3 text-foreground/65 max-w-xl mx-auto text-[15px] leading-relaxed">
-            Thực hiện lần lượt các bước: chọn bên tham gia → xác thực địa chỉ ví
-            → nhập mức góp → tạo ví công ty và nhận NFT cam kết. Bạn có thể làm
-            lại từ đầu bất cứ lúc nào.
+            Thực hiện lần lượt: chọn cơ chế (có / không trọng tài) → chọn bên
+            tham gia → xác thực địa chỉ ví → nhập mức góp → tạo ví và nhận NFT
+            cam kết. Có thể làm lại từ đầu bất cứ lúc nào.
           </p>
         </header>
 
         {/* Stepper */}
-        <div className="mb-10 flex items-center justify-center gap-0 md:gap-1">
-          {[1, 2, 3, 4, 5].map((n, i) => (
+        <div className="mb-10 flex items-center justify-center gap-0 md:gap-1 flex-wrap">
+          {[1, 2, 3, 4, 5, 6].map((n, i) => (
             <div key={n} className="flex items-center">
               <StepDot n={n} active={step === n} done={stepDone(n)} />
-              {i < 4 && (
+              {i < 5 && (
                 <div
                   className={[
                     "mx-1 h-0.5 w-6 md:w-10 rounded-full transition-colors",
@@ -321,21 +363,85 @@ export function SharedWalletDemoFlow() {
         </div>
 
         <div className="rounded-3xl border border-border bg-[var(--pricing-select-bg)] p-6 md:p-8 shadow-sm backdrop-blur-sm">
-          {/* Step 1 */}
+          {/* Step 1 — Cơ chế */}
           {step === 1 && (
             <section className="space-y-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
-                <WalletOutlined className="text-primary" />
-                Chọn đối tác / trọng tài
+                <BranchesOutlined className="text-primary" />
+                Chọn cơ chế
               </h2>
               <p className="text-sm text-foreground/65">
-                <strong>Luật sư Minh An</strong> (trọng tài) được chọn sẵn; bạn
-                có thể thêm đối tác khác. Ở bước xác thực địa chỉ ví, chỉ trọng
-                tài mới nhấn &quot;Xác thực&quot; khi đã xác nhận mọi bên đủ điều
-                kiện.
+                Quyết định có dùng trọng tài hay không. Lựa chọn này ảnh hưởng
+                tới bước chọn bên và cách xác thực địa chỉ ví.
               </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setMechanism("with_arbitrator")}
+                  className={[
+                    "rounded-2xl border-2 p-5 text-left transition-all",
+                    mechanism === "with_arbitrator"
+                      ? "border-primary bg-[var(--sidebar-item-active-bg)] shadow-md"
+                      : "border-border bg-background hover:bg-[var(--sidebar-item-hover-bg)]",
+                  ].join(" ")}
+                >
+                  <p className="font-bold text-foreground">Có trọng tài</p>
+                  <p className="mt-2 text-sm text-foreground/70 leading-relaxed">
+                    Có Luật sư Minh An (trọng tài) trong danh sách; chỉ trọng
+                    tài được nhấn &quot;Xác thực&quot; khi đã xác nhận mọi bên đủ
+                    điều kiện
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMechanism("without_arbitrator")}
+                  className={[
+                    "rounded-2xl border-2 p-5 text-left transition-all",
+                    mechanism === "without_arbitrator"
+                      ? "border-primary bg-[var(--sidebar-item-active-bg)] shadow-md"
+                      : "border-border bg-background hover:bg-[var(--sidebar-item-hover-bg)]",
+                  ].join(" ")}
+                >
+                  <p className="font-bold text-foreground">Không có trọng tài</p>
+                  <p className="mt-2 text-sm text-foreground/70 leading-relaxed">
+                    Không chọn trọng tài. Xác thực
+                    địa chỉ ví theo cách thống nhất giữa các bên.
+                  </p>
+                </button>
+              </div>
+              <Button
+                type="primary"
+                size="large"
+                className="!rounded-xl !h-11 !px-8 !font-semibold"
+                onClick={continueFromMechanism}
+              >
+                Tiếp tục
+              </Button>
+            </section>
+          )}
+
+          {/* Step 2 — Chọn bên */}
+          {step === 2 && (
+            <section className="space-y-6">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <WalletOutlined className="text-primary" />
+                {hasArbitratorFlow ? "Chọn đối tác / trọng tài" : "Chọn đối tác"}
+              </h2>
+              {hasArbitratorFlow ? (
+                <p className="text-sm text-foreground/65">
+                  <strong>Luật sư Minh An</strong> (trọng tài) được chọn sẵn; bạn
+                  có thể thêm đối tác khác. Ở bước xác thực địa chỉ ví, chỉ trọng
+                  tài mới nhấn &quot;Xác thực&quot; khi đã xác nhận mọi bên đủ điều
+                  kiện.
+                </p>
+              ) : (
+                <p className="text-sm text-foreground/65">
+                  Chọn một hoặc nhiều đối tác. Trọng tài không tham gia cơ chế
+                  này.
+                </p>
+              )}
               <ul className="grid gap-3 sm:grid-cols-2">
-                {MOCK_PARTNERS.map((p) => {
+                {partnersToShow.map((p) => {
                   const checked = selectedIds.includes(p.id);
                   return (
                     <li key={p.id}>
@@ -381,10 +487,17 @@ export function SharedWalletDemoFlow() {
               </ul>
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button
+                  size="large"
+                  className="!rounded-xl"
+                  onClick={() => setStep(1)}
+                >
+                  Quay lại
+                </Button>
+                <Button
                   type="primary"
                   size="large"
                   className="!rounded-xl !h-11 !px-8 !font-semibold"
-                  onClick={goStep2}
+                  onClick={goFromPartnersToWallets}
                 >
                   Tạo ví chung
                 </Button>
@@ -392,36 +505,59 @@ export function SharedWalletDemoFlow() {
             </section>
           )}
 
-          {/* Step 2 */}
-          {step === 2 && (
+          {/* Step 3 — Địa chỉ ví */}
+          {step === 3 && (
             <section className="space-y-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <QrcodeOutlined className="text-primary" />
                 Địa chỉ ví từng bên
               </h2>
-              <div className="rounded-2xl border border-primary/30 bg-[var(--sidebar-item-active-bg)] p-4 md:p-5 space-y-2 text-sm text-foreground/85 leading-relaxed">
-                <p className="font-semibold text-foreground">
-                  Quyền xác thực (bước này)
-                </p>
-                <p>
-                  Chỉ <strong>trọng tài</strong> (ví dụ{" "}
-                  <strong>Luật sư Minh An</strong>) mới được nhấn nút{" "}
-                  <strong>Xác thực</strong> sau khi đã đối chiếu: mọi bên đã khai
-                  báo địa chỉ ví và bạn xác nhận{" "}
-                  <strong>tất cả mọi người đã vào đủ tiền</strong> theo thỏa
-                  thuận. Các bên khác chỉ nhập / dán địa chỉ, không dùng nút này
-                  thay trọng tài.
-                </p>
-              </div>
-              <p className="text-sm text-foreground/65">
-                Mỗi bên dán địa chỉ hoặc nội dung quét được. Trọng tài kiểm tra
-                đủ điều kiện rồi mới nhấn &quot;Xác thực&quot; bên dưới.
-              </p>
+              {hasArbitratorFlow ? (
+                <>
+                  <div className="rounded-2xl border border-primary/30 bg-[var(--sidebar-item-active-bg)] p-4 md:p-5 space-y-2 text-sm text-foreground/85 leading-relaxed">
+                    <p className="font-semibold text-foreground">
+                      Quyền xác thực (bước này)
+                    </p>
+                    <p>
+                      Chỉ <strong>trọng tài</strong> (ví dụ{" "}
+                      <strong>Luật sư Minh An</strong>) mới được nhấn nút{" "}
+                      <strong>Xác thực</strong> sau khi đã đối chiếu: mọi bên đã
+                      khai báo địa chỉ ví và bạn xác nhận{" "}
+                      <strong>tất cả mọi người đã vào đủ tiền</strong> theo thỏa
+                      thuận. Các bên khác chỉ nhập / dán địa chỉ, không dùng nút
+                      này thay trọng tài.
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground/65">
+                    Mỗi bên dán địa chỉ hoặc nội dung quét được. Trọng tài kiểm
+                    tra đủ điều kiện rồi mới nhấn &quot;Xác thực&quot; bên dưới.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-border bg-[var(--sidebar-item-hover-bg)] p-4 md:p-5 space-y-2 text-sm text-foreground/85 leading-relaxed">
+                    <p className="font-semibold text-foreground">
+                      Xác thực địa chỉ
+                    </p>
+                    <p>
+                      Mỗi bên nhập địa chỉ ví của mình. Khi{" "}
+                      <strong>tất cả bên đã khai báo</strong> và đã thống nhất
+                      kiểm tra thì có thể nhấn{" "}
+                      <strong>Xác thực</strong> để sang bước tiếp theo.
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground/65">
+                    Dán địa chỉ hoặc nội dung quét được cho từng bên, sau đó
+                    nhấn &quot;Xác thực&quot; khi đã đủ điều kiện.
+                  </p>
+                </>
+              )}
               <div className="space-y-4">
                 {selectedPartners.map((p) => {
                   const v = validated[p.id];
                   const hasInput = (wallets[p.id] ?? "").trim().length > 0;
-                  const isArbitrator = p.id === ARBITRATOR_ID;
+                  const isArbitrator =
+                    hasArbitratorFlow && p.id === ARBITRATOR_ID;
                   return (
                     <div
                       key={p.id}
@@ -432,8 +568,8 @@ export function SharedWalletDemoFlow() {
                           : "border-border",
                       ].join(" ")}
                     >
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <p className="text-sm font-semibold flex flex-wrap items-center">{p.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <p className="text-sm font-semibold mb-0!">{p.name}</p>
                         {isArbitrator ? (
                           <span className="rounded-full bg-[var(--sidebar-item-active-bg)] px-2.5 py-0.5 text-xs font-semibold text-primary">
                             Trọng tài — chỉ bên này bấm &quot;Xác thực&quot;
@@ -472,7 +608,7 @@ export function SharedWalletDemoFlow() {
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-3 items-center">
-                  <Button size="large" className="!rounded-xl" onClick={() => setStep(1)}>
+                  <Button size="large" className="!rounded-xl" onClick={() => setStep(2)}>
                     Quay lại
                   </Button>
                   <Button
@@ -484,16 +620,23 @@ export function SharedWalletDemoFlow() {
                     Xác thực
                   </Button>
                 </div>
-                <p className="text-xs text-foreground/55 pl-0.5">
-                  Thao tác &quot;Xác thực&quot; do trọng tài thực hiện sau khi đã kiểm
-                  tra địa chỉ và xác nhận toàn bộ bên đã vào đủ tiền.
-                </p>
+                {hasArbitratorFlow ? (
+                  <p className="text-xs text-foreground/55 pl-0.5">
+                    Thao tác &quot;Xác thực&quot; do trọng tài thực hiện sau khi đã kiểm
+                    tra địa chỉ và xác nhận toàn bộ bên đã vào đủ tiền.
+                  </p>
+                ) : (
+                  <p className="text-xs text-foreground/55 pl-0.5">
+                    Nhấn &quot;Xác thực&quot; khi các bên đã thống nhất điều kiện (địa chỉ
+                    hợp lệ, đủ góp…).
+                  </p>
+                )}
               </div>
             </section>
           )}
 
-          {/* Step 3 */}
-          {step === 3 && (
+          {/* Step 4 */}
+          {step === 4 && (
             <section className="space-y-6">
               <h2 className="text-xl font-bold">Xác nhận số tiền góp</h2>
               <p className="text-sm text-foreground/65">
@@ -524,7 +667,7 @@ export function SharedWalletDemoFlow() {
                 onOpen={() => setTermsOpen(true)}
               />
               <div className="flex flex-wrap gap-3">
-                <Button size="large" className="!rounded-xl" onClick={() => setStep(2)}>
+                <Button size="large" className="!rounded-xl" onClick={() => setStep(3)}>
                   Quay lại
                 </Button>
                 <Button
@@ -539,8 +682,8 @@ export function SharedWalletDemoFlow() {
             </section>
           )}
 
-          {/* Step 4 */}
-          {step === 4 && (
+          {/* Step 5 */}
+          {step === 5 && (
             <section className="space-y-6">
               <h2 className="text-xl font-bold">Ví công ty &amp; mã gửi bên</h2>
               <div className="rounded-2xl border border-primary/25 bg-[var(--sidebar-item-active-bg)] p-4 md:p-5 space-y-3">
@@ -669,14 +812,14 @@ export function SharedWalletDemoFlow() {
                 </div>
               )}
               <div className="flex flex-wrap gap-3">
-                <Button size="large" className="!rounded-xl" onClick={() => setStep(3)}>
+                <Button size="large" className="!rounded-xl" onClick={() => setStep(4)}>
                   Quay lại
                 </Button>
                 <Button
                   type="primary"
                   size="large"
                   className="!rounded-xl !font-semibold"
-                  onClick={finishToStep5}
+                  onClick={finishToFinalStep}
                   disabled={!walletCreated}
                 >
                   Hoàn tất &amp; xem NFT
@@ -685,8 +828,8 @@ export function SharedWalletDemoFlow() {
             </section>
           )}
 
-          {/* Step 5 */}
-          {step === 5 && (
+          {/* Step 6 */}
+          {step === 6 && (
             <section className="space-y-8">
               <div className="rounded-2xl border-2 border-primary/40 bg-[var(--pricing-gold-bg)] dark:bg-[var(--sidebar-item-active-bg)] p-6 text-center">
                 <CheckCircleFilled className="text-4xl text-primary mb-3" />
